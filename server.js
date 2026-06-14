@@ -5,7 +5,7 @@ app.use(express.json());
 
 const FAL_API_KEY = 'd3ad61e7-ed88-48d4-b2db-6cb32423e5c5:27be2771ad2597d155e82aaadff2235f';
 const FAL_SUBMIT_URL = 'https://queue.fal.run/fal-ai/flux-pro/v1.1';
-const FAL_QUEUE_BASE = 'https://queue.fal.run/fal-ai/flux-pro';
+const FAL_QUEUE_BASE = 'https://queue.fal.run/fal-ai/flux-pro/v1.1';
 const PORT = process.env.PORT || 3000;
 
 const falHeaders = {

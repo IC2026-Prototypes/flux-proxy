@@ -105,6 +105,10 @@ app.get('/status/:requestId', async (req, res) => {
   }
 });
 
+app.get('/', (req, res) => {
+  res.json({ ok: true });
+});
+
 app.get('/health', (req, res) => {
   console.log('[HEALTH] ping');
   res.json({ ok: true });

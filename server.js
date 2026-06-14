@@ -80,19 +80,30 @@ app.get('/status/:requestId', async (req, res) => {
     const statusRes = await fetch(statusUrl, { headers: falHeaders });
     const statusText = await statusRes.text();
     console.log(`[STATUS] Status response code: ${statusRes.status}`);
-    console.log(`[STATUS] Status response body: ${statusText}`);
+    console.log(`[STATUS] Status response body: "${statusText}"`);
+
+    if (!statusText || statusText.trim() === '') {
+      console.log('[STATUS] Empty body from Fal.ai — treating as processing');
+      return res.json({ status: 'processing', url: null });
+    }
+
+    let statusData;
+    try {
+      statusData = JSON.parse(statusText);
+    } catch (parseErr) {
+      console.log('[STATUS] JSON parse error:', parseErr.message, '— body was:', statusText);
+      return res.json({ status: 'processing', url: null });
+    }
 
     if (!statusRes.ok) {
-      console.log('[STATUS] ERROR: Fal.ai status check failed');
+      console.log('[STATUS] ERROR: Fal.ai status check failed:', statusData);
       return res.status(502).json({ error: 'Status check failed', details: statusText });
     }
 
-    const statusData = JSON.parse(statusText);
     const status = statusData.status;
     console.log(`[STATUS] Current status: ${status}`);
 
     if (status === 'COMPLETED' || status === 'completed') {
-      // Fetch the actual result from the /response endpoint
       const resultUrl = `${FAL_QUEUE_BASE}/requests/${requestId}/response`;
       console.log(`[STATUS] Fetching result from: ${resultUrl}`);
 
@@ -101,7 +112,14 @@ app.get('/status/:requestId', async (req, res) => {
       console.log(`[STATUS] Result response code: ${resultRes.status}`);
       console.log(`[STATUS] Result response body: ${resultText}`);
 
-      const resultData = JSON.parse(resultText);
+      let resultData;
+      try {
+        resultData = JSON.parse(resultText);
+      } catch (parseErr) {
+        console.log('[STATUS] Result JSON parse error:', parseErr.message);
+        return res.json({ status: 'processing', url: null });
+      }
+
       const imageUrl = resultData?.images?.[0]?.url
         || resultData?.output?.images?.[0]?.url
         || null;

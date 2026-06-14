@@ -4,14 +4,18 @@ const app = express();
 app.use(express.json());
 
 const FAL_API_KEY = 'd3ad61e7-ed88-48d4-b2db-6cb32423e5c5:27be2771ad2597d155e82aaadff2235f';
-const FAL_SUBMIT_URL = 'https://fal.run/fal-ai/flux-pro/v1.1';
-const FAL_STATUS_BASE = 'https://fal.run/fal-ai/flux-pro/requests';
+const FAL_SUBMIT_URL = 'https://queue.fal.run/fal-ai/flux-pro/v1.1';
+const FAL_QUEUE_BASE = 'https://queue.fal.run/fal-ai/flux-pro';
 const PORT = process.env.PORT || 3000;
 
 const falHeaders = {
   'Authorization': `Key ${FAL_API_KEY}`,
   'Content-Type': 'application/json'
 };
+
+app.get('/', (req, res) => {
+  res.json({ ok: true });
+});
 
 app.post('/submit', async (req, res) => {
   const { prompt, id } = req.body;
@@ -31,12 +35,12 @@ app.post('/submit', async (req, res) => {
     enhance_prompt: true
   };
 
-  console.log('[SUBMIT] Calling Fal.ai:', FAL_SUBMIT_URL);
+  console.log('[SUBMIT] Calling Fal.ai queue:', FAL_SUBMIT_URL);
 
   try {
     const falRes = await fetch(FAL_SUBMIT_URL, {
       method: 'POST',
-      headers: { ...falHeaders, 'prefer': 'respond-async' },
+      headers: falHeaders,
       body: JSON.stringify(payload)
     });
 
@@ -68,25 +72,40 @@ app.post('/submit', async (req, res) => {
 
 app.get('/status/:requestId', async (req, res) => {
   const { requestId } = req.params;
-  const url = `${FAL_STATUS_BASE}/${requestId}`;
-  console.log(`[STATUS] Checking request_id: ${requestId}`);
+  const statusUrl = `${FAL_QUEUE_BASE}/requests/${requestId}/status`;
+  console.log(`[STATUS] Checking status for request_id: ${requestId}`);
+  console.log(`[STATUS] URL: ${statusUrl}`);
 
   try {
-    const falRes = await fetch(url, { headers: falHeaders });
-    const text = await falRes.text();
-    console.log(`[STATUS] Fal.ai response status: ${falRes.status}`);
-    console.log(`[STATUS] Fal.ai response body: ${text}`);
+    const statusRes = await fetch(statusUrl, { headers: falHeaders });
+    const statusText = await statusRes.text();
+    console.log(`[STATUS] Status response code: ${statusRes.status}`);
+    console.log(`[STATUS] Status response body: ${statusText}`);
 
-    if (!falRes.ok) {
-      console.log('[STATUS] ERROR: Fal.ai returned non-OK status');
-      return res.status(502).json({ error: 'Fal.ai status check failed', details: text });
+    if (!statusRes.ok) {
+      console.log('[STATUS] ERROR: Fal.ai status check failed');
+      return res.status(502).json({ error: 'Status check failed', details: statusText });
     }
 
-    const data = JSON.parse(text);
-    const status = data.status;
+    const statusData = JSON.parse(statusText);
+    const status = statusData.status;
+    console.log(`[STATUS] Current status: ${status}`);
 
     if (status === 'COMPLETED' || status === 'completed') {
-      const imageUrl = data?.output?.images?.[0]?.url || data?.images?.[0]?.url || null;
+      // Fetch the actual result from the /response endpoint
+      const resultUrl = `${FAL_QUEUE_BASE}/requests/${requestId}/response`;
+      console.log(`[STATUS] Fetching result from: ${resultUrl}`);
+
+      const resultRes = await fetch(resultUrl, { headers: falHeaders });
+      const resultText = await resultRes.text();
+      console.log(`[STATUS] Result response code: ${resultRes.status}`);
+      console.log(`[STATUS] Result response body: ${resultText}`);
+
+      const resultData = JSON.parse(resultText);
+      const imageUrl = resultData?.images?.[0]?.url
+        || resultData?.output?.images?.[0]?.url
+        || null;
+
       console.log(`[STATUS] COMPLETED — image URL: ${imageUrl}`);
       return res.json({ status: 'completed', url: imageUrl });
     }
@@ -103,10 +122,6 @@ app.get('/status/:requestId', async (req, res) => {
     console.log('[STATUS] EXCEPTION:', err.message);
     return res.status(500).json({ error: 'Internal error during status check', message: err.message });
   }
-});
-
-app.get('/', (req, res) => {
-  res.json({ ok: true });
 });
 
 app.get('/health', (req, res) => {
